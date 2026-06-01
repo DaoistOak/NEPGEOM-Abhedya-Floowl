@@ -1948,6 +1948,7 @@ async function initializeApp() {
                 id: 'nepal-watersheds-fill',
                 type: 'fill',
                 source: 'nepal-watersheds',
+                layout: { visibility: 'none' },
                 paint: {
                     'fill-color': '#2d5a27',
                     'fill-opacity': 0.08
@@ -1957,6 +1958,7 @@ async function initializeApp() {
                 id: 'nepal-watersheds-outline',
                 type: 'line',
                 source: 'nepal-watersheds',
+                layout: { visibility: 'none' },
                 paint: {
                     'line-color': '#2d5a27',
                     'line-width': 1,
@@ -1972,6 +1974,7 @@ async function initializeApp() {
                 id: 'nepal-rivers-line',
                 type: 'line',
                 source: 'nepal-rivers',
+                layout: { visibility: 'none' },
                 paint: {
                     'line-color': '#4fc3f7',
                     'line-width': 1.5,
@@ -1987,6 +1990,7 @@ async function initializeApp() {
                 id: 'nepal-pourpoints-circle',
                 type: 'circle',
                 source: 'nepal-pourpoints',
+                layout: { visibility: 'none' },
                 paint: {
                     'circle-radius': 4,
                     'circle-color': '#ff6f00',
@@ -2052,6 +2056,30 @@ async function initializeApp() {
         console.error('Failed to initialize app', err);
         warningEl.textContent = 'Error: ' + err.message;
         warningEl.style.display = 'block';
+    }
+
+    // GeoJSON toggle listeners
+    const toggleRivers = document.getElementById('toggle-rivers');
+    const toggleBasins = document.getElementById('toggle-basins');
+    const togglePeaks = document.getElementById('toggle-peaks');
+
+    function setNepalLayerVisibility(id, visible) {
+        if (map && map.getLayer(id)) {
+            map.setLayoutProperty(id, 'visibility', visible ? 'visible' : 'none');
+        }
+    }
+
+    if (toggleRivers) {
+        toggleRivers.addEventListener('change', () => setNepalLayerVisibility('nepal-rivers-line', toggleRivers.checked));
+    }
+    if (toggleBasins) {
+        toggleBasins.addEventListener('change', () => {
+            setNepalLayerVisibility('nepal-watersheds-fill', toggleBasins.checked);
+            setNepalLayerVisibility('nepal-watersheds-outline', toggleBasins.checked);
+        });
+    }
+    if (togglePeaks) {
+        togglePeaks.addEventListener('change', () => setNepalLayerVisibility('nepal-pourpoints-circle', togglePeaks.checked));
     }
 }
 
