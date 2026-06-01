@@ -1939,6 +1939,62 @@ async function initializeApp() {
             ensureRiverThreeLayer();
             fetchLocations();
             fetchRegions();
+
+            map.addSource('nepal-watersheds', {
+                type: 'geojson',
+                data: 'nepal_watershed.geojson'
+            });
+            map.addLayer({
+                id: 'nepal-watersheds-fill',
+                type: 'fill',
+                source: 'nepal-watersheds',
+                paint: {
+                    'fill-color': '#2d5a27',
+                    'fill-opacity': 0.08
+                }
+            });
+            map.addLayer({
+                id: 'nepal-watersheds-outline',
+                type: 'line',
+                source: 'nepal-watersheds',
+                paint: {
+                    'line-color': '#2d5a27',
+                    'line-width': 1,
+                    'line-opacity': 0.35
+                }
+            });
+
+            map.addSource('nepal-rivers', {
+                type: 'geojson',
+                data: 'nepal_hydroriver.geojson'
+            });
+            map.addLayer({
+                id: 'nepal-rivers-line',
+                type: 'line',
+                source: 'nepal-rivers',
+                paint: {
+                    'line-color': '#4fc3f7',
+                    'line-width': 1.5,
+                    'line-opacity': 0.6
+                }
+            });
+
+            map.addSource('nepal-pourpoints', {
+                type: 'geojson',
+                data: 'nepal_poutpoints.geojson'
+            });
+            map.addLayer({
+                id: 'nepal-pourpoints-circle',
+                type: 'circle',
+                source: 'nepal-pourpoints',
+                paint: {
+                    'circle-radius': 4,
+                    'circle-color': '#ff6f00',
+                    'circle-opacity': 0.8,
+                    'circle-stroke-width': 1,
+                    'circle-stroke-color': '#fff'
+                }
+            });
         });
 
         // --- Map controls (2D/3D, zoom, compass) ---
