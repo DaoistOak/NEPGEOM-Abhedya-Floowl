@@ -812,9 +812,7 @@ def simulate():
             infiltration=data.get('infiltration', 10),
             manning_n=data.get('manning', 0.04),
             soil_type=data.get('soil', 'loam'),
-            resolution=data.get('resolution', 'medium'),
-            nepal_rivers_geojson=data.get('nepal_rivers'),
-            nepal_watersheds_geojson=data.get('nepal_watersheds')
+            resolution=data.get('resolution', 'medium')
         )
     except Exception as e:
         return jsonify({'error': str(e)}), 500
