@@ -1942,7 +1942,7 @@ async function initializeApp() {
 
             map.addSource('nepal-watersheds', {
                 type: 'geojson',
-                data: 'nepal_watershed.geojson'
+                data: '/src/nepal_watershed.geojson'
             });
             map.addLayer({
                 id: 'nepal-watersheds-fill',
@@ -1968,7 +1968,7 @@ async function initializeApp() {
 
             map.addSource('nepal-rivers', {
                 type: 'geojson',
-                data: 'nepal_hydroriver.geojson'
+                data: '/src/nepal_hydroriver.geojson'
             });
             map.addLayer({
                 id: 'nepal-rivers-line',
@@ -1984,7 +1984,7 @@ async function initializeApp() {
 
             map.addSource('nepal-pourpoints', {
                 type: 'geojson',
-                data: 'nepal_poutpoints.geojson'
+                data: '/src/nepal_poutpoints.geojson'
             });
             map.addLayer({
                 id: 'nepal-pourpoints-circle',

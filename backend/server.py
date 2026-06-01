@@ -20,9 +20,9 @@ ARCGIS_RIVERS_QUERY_URL = 'https://services-ap1.arcgis.com/iA7fZQOnjY9D67Zx/arcg
 ARCGIS_MIN_QUERY_SPAN_DEG = 0.06
 ARCGIS_QUERY_PADDING_RATIO = 0.45
 
-NEPAL_WATERSHEDS_PATH = os.path.join(frontend_dir, 'nepal_watershed.geojson')
-NEPAL_HYDRORIVER_PATH = os.path.join(frontend_dir, 'nepal_hydroriver.geojson')
-NEPAL_POUTPOINTS_PATH = os.path.join(frontend_dir, 'nepal_poutpoints.geojson')
+NEPAL_WATERSHEDS_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), '../src/nepal_watershed.geojson')
+NEPAL_HYDRORIVER_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), '../src/nepal_hydroriver.geojson')
+NEPAL_POUTPOINTS_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), '../src/nepal_poutpoints.geojson')
 
 nepal_watersheds_geojson = None
 nepal_poutpoints_geojson = None
@@ -32,6 +32,12 @@ if os.path.exists(NEPAL_WATERSHEDS_PATH):
 if os.path.exists(NEPAL_POUTPOINTS_PATH):
     with open(NEPAL_POUTPOINTS_PATH) as f:
         nepal_poutpoints_geojson = json.load(f)
+
+
+@app.route('/src/<path:filename>')
+def serve_src(filename):
+    src_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), '../src')
+    return send_from_directory(src_dir, filename)
 
 
 def region_bounds_from_geometry(geometry):
