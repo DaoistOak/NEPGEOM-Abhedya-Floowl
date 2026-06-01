@@ -283,12 +283,94 @@ def compute_arcgis_flood(dem, river_mask, transform,
     return D
 
 
+def apply_basin_peak_modulation(flood_score, dem, transform,
+                                  nepal_watersheds=None, nepal_pourpoints=None):
+    if not nepal_watersheds and not nepal_pourpoints:
+        return flood_score
+
+    ny, nx = dem.shape
+    inv_transform = ~transform
+    result = flood_score.copy().astype(np.float64)
+    valid = result >= 0
+
+    xs = np.arange(nx, dtype=np.float64)
+    ys = np.arange(ny, dtype=np.float64)
+    xx, yy = np.meshgrid(xs, ys)
+    lngs, lats = inv_transform * (xx, yy)
+
+    if nepal_watersheds:
+        features = nepal_watersheds.get('features', [])
+        ws_mask = np.zeros((ny, nx), dtype=bool)
+        for feat in features:
+            geom = feat.get('geometry', {})
+            if geom.get('type') != 'MultiPolygon':
+                continue
+            for poly in geom['coordinates']:
+                ring = poly[0]
+                if len(ring) < 3:
+                    continue
+                arr = np.array(ring)
+                xs_ring = arr[:, 0].astype(np.float64)
+                ys_ring = arr[:, 1].astype(np.float64)
+                cs_ring, rs_ring = inv_transform * (xs_ring, ys_ring)
+                r_min = max(0, int(np.floor(rs_ring.min())))
+                r_max = min(ny, int(np.ceil(rs_ring.max())))
+                c_min = max(0, int(np.floor(cs_ring.min())))
+                c_max = min(nx, int(np.ceil(cs_ring.max())))
+                if r_min >= r_max or c_min >= c_max:
+                    continue
+                sub_lngs = lngs[r_min:r_max, c_min:c_max]
+                sub_lats = lats[r_min:r_max, c_min:c_max]
+                sub_mask = np.zeros_like(sub_lngs, dtype=bool)
+                for i in range(len(ring)):
+                    x1, y1 = ring[i]
+                    x2, y2 = ring[(i + 1) % len(ring)]
+                    cond = (y1 > sub_lats) != (y2 > sub_lats)
+                    if not cond.any():
+                        continue
+                    x_interp = x1 + (x2 - x1) * (sub_lats - y1) / (y2 - y1 + 1e-12)
+                    cond &= sub_lngs < x_interp
+                    sub_mask[cond] = ~sub_mask[cond]
+                ws_mask[r_min:r_max, c_min:c_max] |= sub_mask
+
+        if ws_mask.any():
+            ws_dem = np.where(ws_mask & ~np.isnan(dem), dem, np.nan)
+            elev_min = np.nanmin(ws_dem)
+            elev_max = np.nanmax(ws_dem)
+            if elev_max > elev_min and not np.isnan(elev_min):
+                basin_depth = (ws_dem - elev_min) / (elev_max - elev_min)
+                basin_depth = 1.0 - basin_depth
+                basin_depth = np.clip(basin_depth * 1.5, 0.0, 1.0)
+                basin_depth = np.where(ws_mask, basin_depth, 0.0)
+                result[valid] = result[valid] * (0.4 + 0.6 * basin_depth[valid])
+
+    if nepal_pourpoints:
+        features = nepal_pourpoints.get('features', [])
+        for feat in features:
+            geom = feat.get('geometry', {})
+            if geom.get('type') != 'Point':
+                continue
+            lng, lat = geom['coordinates']
+            c, r = inv_transform * (lng, lat)
+            ic, ir = int(round(c)), int(round(r))
+            for dr in range(-3, 4):
+                for dc in range(-3, 4):
+                    nr, nc = ir + dr, ic + dc
+                    if 0 <= nr < ny and 0 <= nc < nx:
+                        dist = math.sqrt(dr * dr + dc * dc)
+                        boost = math.exp(-dist / 2.0)
+                        result[nr, nc] = result[nr, nc] * (1.0 + boost * 0.4)
+
+    return result
+
+
 def run(bounds, token, output_dir=None, zoom=None, expand_factor=2.0,
         river_threshold_pct=95, display_threshold_pct=50,
         algorithm='test-algo',
         precipitation=1, duration=6,
         infiltration=10, manning_n=0.04, soil_type='loam',
-        resolution='medium'):
+        resolution='medium',
+        nepal_watersheds=None, nepal_pourpoints=None):
     if output_dir is None:
         output_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'cache')
     os.makedirs(output_dir, exist_ok=True)
@@ -390,6 +472,12 @@ def run(bounds, token, output_dir=None, zoom=None, expand_factor=2.0,
             flow_acc=flow_acc
         )
         method_name = 'test-algo'
+
+    flood_score = apply_basin_peak_modulation(
+        flood_score, dem, transform,
+        nepal_watersheds=nepal_watersheds,
+        nepal_pourpoints=nepal_pourpoints
+    )
 
     inv_transform = ~transform
     col0, row0 = inv_transform * (bounds['minLng'], bounds['maxLat'])

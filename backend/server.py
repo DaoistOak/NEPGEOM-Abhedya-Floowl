@@ -20,6 +20,19 @@ ARCGIS_RIVERS_QUERY_URL = 'https://services-ap1.arcgis.com/iA7fZQOnjY9D67Zx/arcg
 ARCGIS_MIN_QUERY_SPAN_DEG = 0.06
 ARCGIS_QUERY_PADDING_RATIO = 0.45
 
+NEPAL_WATERSHEDS_PATH = os.path.join(frontend_dir, 'nepal_watershed.geojson')
+NEPAL_HYDRORIVER_PATH = os.path.join(frontend_dir, 'nepal_hydroriver.geojson')
+NEPAL_POUTPOINTS_PATH = os.path.join(frontend_dir, 'nepal_poutpoints.geojson')
+
+nepal_watersheds_geojson = None
+nepal_poutpoints_geojson = None
+if os.path.exists(NEPAL_WATERSHEDS_PATH):
+    with open(NEPAL_WATERSHEDS_PATH) as f:
+        nepal_watersheds_geojson = json.load(f)
+if os.path.exists(NEPAL_POUTPOINTS_PATH):
+    with open(NEPAL_POUTPOINTS_PATH) as f:
+        nepal_poutpoints_geojson = json.load(f)
+
 
 def region_bounds_from_geometry(geometry):
     if not geometry or geometry.get('type') != 'Polygon':
@@ -812,7 +825,9 @@ def simulate():
             infiltration=data.get('infiltration', 10),
             manning_n=data.get('manning', 0.04),
             soil_type=data.get('soil', 'loam'),
-            resolution=data.get('resolution', 'medium')
+            resolution=data.get('resolution', 'medium'),
+            nepal_watersheds=nepal_watersheds_geojson,
+            nepal_pourpoints=nepal_poutpoints_geojson
         )
     except Exception as e:
         return jsonify({'error': str(e)}), 500
