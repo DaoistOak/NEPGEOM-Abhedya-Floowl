@@ -288,7 +288,8 @@ def run(bounds, token, output_dir=None, zoom=None, expand_factor=2.0,
         algorithm='test-algo',
         precipitation=1, duration=6,
         infiltration=10, manning_n=0.04, soil_type='loam',
-        resolution='medium'):
+        resolution='medium',
+        nepal_rivers_geojson=None, nepal_watersheds_geojson=None):
     if output_dir is None:
         output_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'cache')
     os.makedirs(output_dir, exist_ok=True)
@@ -390,6 +391,45 @@ def run(bounds, token, output_dir=None, zoom=None, expand_factor=2.0,
             flow_acc=flow_acc
         )
         method_name = 'test-algo'
+
+    # GeoJSON modulation from Nepal hydroriver / watershed data
+    if nepal_rivers_geojson or nepal_watersheds_geojson:
+        geo_boost = np.ones_like(flood_score, dtype=np.float64)
+
+        if nepal_rivers_geojson:
+            features = nepal_rivers_geojson.get('features', []) if isinstance(nepal_rivers_geojson, dict) else []
+            for feat in features:
+                geom = feat.get('geometry', {})
+                props = feat.get('properties', {})
+                coords = geom.get('coordinates', [])
+                discharge = props.get('DIS_AV_CMS', 1.0) or 1.0
+                strahler = props.get('ORD_STRA', 1) or 1
+                boost = min(1.0 + 0.2 * math.log10(max(discharge, 0.1)) + 0.1 * strahler, 3.0)
+                for line in (coords if geom.get('type') == 'MultiLineString' else [coords]):
+                    for lng, lat in line:
+                        c, r = inv_transform * (lng, lat)
+                        ic, ir = int(round(c)), int(round(r))
+                        if 0 <= ir < flood_score.shape[0] and 0 <= ic < flood_score.shape[1]:
+                            geo_boost[ir, ic] = max(geo_boost[ir, ic], boost)
+
+        if nepal_watersheds_geojson:
+            features = nepal_watersheds_geojson.get('features', []) if isinstance(nepal_watersheds_geojson, dict) else []
+            for feat in features:
+                props = feat.get('properties', {})
+                basin_order = props.get('ORDER', 1) or 1
+                up_area = props.get('UP_AREA', 1.0) or 1.0
+                boost = min(1.0 + 0.05 * math.log10(max(up_area, 1.0)) + 0.05 * basin_order, 2.0)
+                geom = feat.get('geometry', {})
+                if geom.get('type') == 'MultiPolygon':
+                    for poly in geom['coordinates']:
+                        for ring in poly:
+                            for lng, lat in ring:
+                                c, r = inv_transform * (lng, lat)
+                                ic, ir = int(round(c)), int(round(r))
+                                if 0 <= ir < flood_score.shape[0] and 0 <= ic < flood_score.shape[1]:
+                                    geo_boost[ir, ic] = max(geo_boost[ir, ic], boost)
+
+        flood_score = flood_score * geo_boost
 
     inv_transform = ~transform
     col0, row0 = inv_transform * (bounds['minLng'], bounds['maxLat'])

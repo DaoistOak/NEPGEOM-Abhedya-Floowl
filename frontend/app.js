@@ -866,6 +866,7 @@ function applyRegionEditBounds(bounds) {
         name: activeRegionEdit.name
     }));
     scheduleDynamicRiversForBounds(bounds);
+    showNepalDataForBounds(bounds);
 }
 
 function calculateBoundsFromHandleDrag(key, lng, lat, currentBounds) {
@@ -923,6 +924,94 @@ function onRegionHandleDrag(key) {
     applyRegionEditBounds(nextBounds);
 }
 
+let nepalGeoJSONCache = null;
+
+async function loadNepalGeoJSON() {
+    try {
+        const [ws, riv, pp] = await Promise.all([
+            fetch('nepal_watershed.geojson').then(r => r.json()),
+            fetch('nepal_hydroriver.geojson').then(r => r.json()),
+            fetch('nepal_poutpoints.geojson').then(r => r.json())
+        ]);
+        nepalGeoJSONCache = { watersheds: ws, rivers: riv, pourpoints: pp };
+    } catch (e) {
+        console.warn('Failed to load Nepal GeoJSON:', e);
+    }
+}
+
+function filterGeoJSONByBounds(geojson, bounds) {
+    if (!geojson || !geojson.features) return { type: 'FeatureCollection', features: [] };
+    const filtered = geojson.features.filter(f => {
+        const bbox = featureBBox(f);
+        if (!bbox) return true;
+        return bbox[0] < bounds.maxLng && bbox[2] > bounds.minLng &&
+               bbox[1] < bounds.maxLat && bbox[3] > bounds.minLat;
+    });
+    return { type: 'FeatureCollection', features: filtered };
+}
+
+function featureBBox(feature) {
+    const geom = feature.geometry;
+    if (!geom) return null;
+    switch (geom.type) {
+        case 'Point':
+            return [geom.coordinates[0], geom.coordinates[1], geom.coordinates[0], geom.coordinates[1]];
+        case 'MultiPoint':
+        case 'LineString':
+            return geom.coordinates.reduce((bbox, c) => [
+                Math.min(bbox[0], c[0]), Math.min(bbox[1], c[1]),
+                Math.max(bbox[2], c[0]), Math.max(bbox[3], c[1])
+            ], [Infinity, Infinity, -Infinity, -Infinity]);
+        case 'MultiLineString':
+            return geom.coordinates.reduce((bbox, line) => line.reduce((b, c) => [
+                Math.min(b[0], c[0]), Math.min(b[1], c[1]),
+                Math.max(b[2], c[0]), Math.max(b[3], c[1])
+            ], bbox), [Infinity, Infinity, -Infinity, -Infinity]);
+        case 'Polygon':
+            return geom.coordinates[0].reduce((bbox, c) => [
+                Math.min(bbox[0], c[0]), Math.min(bbox[1], c[1]),
+                Math.max(bbox[2], c[0]), Math.max(bbox[3], c[1])
+            ], [Infinity, Infinity, -Infinity, -Infinity]);
+        case 'MultiPolygon':
+            return geom.coordinates.reduce((bbox, poly) => poly[0].reduce((b, c) => [
+                Math.min(b[0], c[0]), Math.min(b[1], c[1]),
+                Math.max(b[2], c[0]), Math.max(b[3], c[1])
+            ], bbox), [Infinity, Infinity, -Infinity, -Infinity]);
+        default:
+            return null;
+    }
+}
+
+function showNepalDataForBounds(bounds) {
+    if (!nepalGeoJSONCache || !map) return;
+    const expanded = {
+        minLng: bounds.minLng - 0.2,
+        maxLng: bounds.maxLng + 0.2,
+        minLat: bounds.minLat - 0.2,
+        maxLat: bounds.maxLat + 0.2
+    };
+    if (map.getSource('nepal-watersheds')) {
+        map.getSource('nepal-watersheds').setData(filterGeoJSONByBounds(nepalGeoJSONCache.watersheds, expanded));
+        map.setLayoutProperty('nepal-watersheds-fill', 'visibility', 'visible');
+        map.setLayoutProperty('nepal-watersheds-outline', 'visibility', 'visible');
+    }
+    if (map.getSource('nepal-rivers')) {
+        map.getSource('nepal-rivers').setData(filterGeoJSONByBounds(nepalGeoJSONCache.rivers, expanded));
+        map.setLayoutProperty('nepal-rivers-line', 'visibility', 'visible');
+    }
+    if (map.getSource('nepal-pourpoints')) {
+        map.getSource('nepal-pourpoints').setData(filterGeoJSONByBounds(nepalGeoJSONCache.pourpoints, expanded));
+        map.setLayoutProperty('nepal-pourpoints-circle', 'visibility', 'visible');
+    }
+}
+
+function hideNepalData() {
+    if (!map) return;
+    ['nepal-watersheds-fill', 'nepal-watersheds-outline', 'nepal-rivers-line', 'nepal-pourpoints-circle'].forEach(id => {
+        if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', 'none');
+    });
+}
+
 function clearRegionEditState() {
     if (dynamicRiversTimer) {
         clearTimeout(dynamicRiversTimer);
@@ -951,6 +1040,8 @@ function clearRegionEditState() {
     exportTifBtn.style.display = 'none';
     simulateBtn.style.display = 'none';
     exportStatus.style.display = 'none';
+
+    hideNepalData();
 }
 
 function getActiveEditBounds() {
@@ -1079,7 +1170,9 @@ async function deleteRegion(id) {
 
         if (response.ok) {
             if (activeRegionEdit && activeRegionEdit.id === id) {
-                clearRegionEditState();
+    clearRegionEditState();
+
+    showNepalDataForBounds(bounds);
             }
             await fetchRegions();
         } else {
@@ -1797,7 +1890,9 @@ async function initializeApp() {
                         soil: document.getElementById('param-soil').value,
                         algorithm: document.getElementById('param-algorithm').value,
                         river_threshold: parseInt(document.getElementById('param-river-threshold').value),
-                        display_threshold: parseInt(document.getElementById('param-display-threshold').value)
+                        display_threshold: parseInt(document.getElementById('param-display-threshold').value),
+                        nepal_rivers: nepalGeoJSONCache ? filterGeoJSONByBounds(nepalGeoJSONCache.rivers, bounds) : null,
+                        nepal_watersheds: nepalGeoJSONCache ? filterGeoJSONByBounds(nepalGeoJSONCache.watersheds, bounds) : null
                     })
                 });
                 const payload = await parseJsonResponse(response);
@@ -1942,12 +2037,13 @@ async function initializeApp() {
 
             map.addSource('nepal-watersheds', {
                 type: 'geojson',
-                data: 'nepal_watershed.geojson'
+                data: { type: 'FeatureCollection', features: [] }
             });
             map.addLayer({
                 id: 'nepal-watersheds-fill',
                 type: 'fill',
                 source: 'nepal-watersheds',
+                layout: { visibility: 'none' },
                 paint: {
                     'fill-color': '#2d5a27',
                     'fill-opacity': 0.08
@@ -1957,6 +2053,7 @@ async function initializeApp() {
                 id: 'nepal-watersheds-outline',
                 type: 'line',
                 source: 'nepal-watersheds',
+                layout: { visibility: 'none' },
                 paint: {
                     'line-color': '#2d5a27',
                     'line-width': 1,
@@ -1966,12 +2063,13 @@ async function initializeApp() {
 
             map.addSource('nepal-rivers', {
                 type: 'geojson',
-                data: 'nepal_hydroriver.geojson'
+                data: { type: 'FeatureCollection', features: [] }
             });
             map.addLayer({
                 id: 'nepal-rivers-line',
                 type: 'line',
                 source: 'nepal-rivers',
+                layout: { visibility: 'none' },
                 paint: {
                     'line-color': '#4fc3f7',
                     'line-width': 1.5,
@@ -1981,12 +2079,13 @@ async function initializeApp() {
 
             map.addSource('nepal-pourpoints', {
                 type: 'geojson',
-                data: 'nepal_poutpoints.geojson'
+                data: { type: 'FeatureCollection', features: [] }
             });
             map.addLayer({
                 id: 'nepal-pourpoints-circle',
                 type: 'circle',
                 source: 'nepal-pourpoints',
+                layout: { visibility: 'none' },
                 paint: {
                     'circle-radius': 4,
                     'circle-color': '#ff6f00',
@@ -1995,6 +2094,8 @@ async function initializeApp() {
                     'circle-stroke-color': '#fff'
                 }
             });
+
+            loadNepalGeoJSON();
         });
 
         // --- Map controls (2D/3D, zoom, compass) ---
@@ -2260,14 +2361,14 @@ simulateBtn.addEventListener('click', async () => {
                 minLng: bounds.minLng,
                 minLat: bounds.minLat,
                 maxLng: bounds.maxLng,
-                maxLat: bounds.maxLat
+                maxLat: bounds.maxLat,
+                nepal_rivers: nepalGeoJSONCache ? filterGeoJSONByBounds(nepalGeoJSONCache.rivers, bounds) : null,
+                nepal_watersheds: nepalGeoJSONCache ? filterGeoJSONByBounds(nepalGeoJSONCache.watersheds, bounds) : null
             })
         });
         const payload = await parseJsonResponse(response);
 
         if (response.ok && payload) {
-            const vr = payload.velocity_range || {};
-            exportStatus.textContent = `Simulation done. mag_max=${vr.mag_max ? vr.mag_max.toFixed(2) : '?'}`;
             exportStatus.className = 'export-status success';
 
             if (payload.depth_png) {
